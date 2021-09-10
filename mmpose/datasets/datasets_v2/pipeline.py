@@ -4,6 +4,9 @@ import inspect
 from abc import ABCMeta, abstractmethod
 from typing import Any, Optional, Union
 
+import torch.nn.functional as F
+from torch import Tensor
+
 
 class Transform(metaclass=ABCMeta):
 
@@ -44,21 +47,24 @@ class Transform(metaclass=ABCMeta):
             # check input_key_mapping
             if not input_key_mapping:
                 raise KeyError(f'key_mappings[{i}] failed static check: '
-                    'missing "input" field.')
-                       
+                               'missing "input" field.')
+
             # check unexpected input keys that doesn't match self.transform
-            unexpected_keys = input_key_mapping.keys() - self.default_key_mapping['input'].keys()
+            unexpected_keys = input_key_mapping.keys(
+            ) - self.default_key_mapping['input'].keys()
             if unexpected_keys:
-                raise ValueError(f'key_mappings[{i}] failed static check: '
+                raise ValueError(
+                    f'key_mappings[{i}] failed static check: '
                     f'Got unexpected keys {unexpected_keys}. '
                     f'Expect {self.default_key_mapping["input"].keys()}.')
-            
+
             # check output
             if output_key_mapping is None:
                 # check at most one output_key_mapping uses default
                 # to valid output collision
                 if use_default_output:
-                    raise ValueError(f'key_mappings[{i}] failed static check: '
+                    raise ValueError(
+                        f'key_mappings[{i}] failed static check: '
                         'Multiple key mappings used default output mapping, '
                         'while at most one is allowed.')
                 use_default_output = True
@@ -66,30 +72,59 @@ class Transform(metaclass=ABCMeta):
                 # check output key collision
                 for outer_key in output_key_mapping.values():
                     if outer_key in output_keys:
-                        raise ValueError(f'key_mappings[{i}] failed static check: '
-                            f'"{outer_key}" has been used in another output mapping.')
+                        raise ValueError(
+                            f'key_mappings[{i}] failed static check: '
+                            f'output key "{outer_key}" has been used '
+                            'in another output mapping.')
                     output_keys.add(outer_key)
 
     def _dynamic_check_input_key_mapping(self, input_key_mapping, result):
-        enexpected_keys = input_key_mapping.values() - result.keys()
-        if enexpected_keys:
-            raise 
+        missing_keys = input_key_mapping.values() - result.keys()
+        if missing_keys:
+            raise RuntimeError('Dynamic input_key_mapping check failed.'
+                               f'input keys {missing_keys} missing in data.')
 
     def _dynamic_check_output_key_mapping(self, output_key_mapping, output):
-        pass
+        missing_keys = output_key_mapping.values() - output.keys()
+        if missing_keys:
+            raise RuntimeError('Dynamic input_key_mapping check failed.'
+                               f'input keys {missing_keys} missing in the '
+                               'transform output')
 
-    def __call__(self, results:dict):
-        for key_mapping  in self._key_mappings:
-            kwargs = {inner_key:results[outer_key] for inner_key, outer_key in key_mapping['input'].items()}
-            
+    def __call__(self, results: dict):
+        for key_mapping in self._key_mappings:
+            kwargs = {
+                inner_key: results[outer_key]
+                for inner_key, outer_key in key_mapping['input'].items()
+            }
+
             output = self.transform(**kwargs)
 
             if key_mapping['output']:
-                output = {outer_key:output[inner_key] for inner_key, outer_key in key_mapping['output'].items()}
-            
+                output = {
+                    outer_key: output[inner_key]
+                    for inner_key, outer_key in key_mapping['output'].items()
+                }
+
             results.update(output)
         return results
 
     @abstractmethod
     def transform(self, **kwargs) -> dict[str, Any]:
         pass
+
+
+class NormalizeTensor(Transform):
+
+    def __init__(self,
+                 mean,
+                 std,
+                 key_mapping: Optional[Union[dict, list]] = None):
+        super().__init__(key_mapping=key_mapping)
+
+        self.mean = mean
+        self.std = std
+
+    def transform(self, img: Tensor) -> dict[str, Any]:
+        output = dict(img=F.normalize(img, mean=self.mean, std=self.std))
+        return output
