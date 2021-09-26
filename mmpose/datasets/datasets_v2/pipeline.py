@@ -4,8 +4,8 @@ import inspect
 from abc import ABCMeta, abstractmethod
 from typing import Any, Optional, Union
 
-import torch.nn.functional as F
 from torch import Tensor
+from torchvision.transforms import functional as F
 
 
 class Transform(metaclass=ABCMeta):
@@ -91,12 +91,32 @@ class Transform(metaclass=ABCMeta):
                                f'input keys {missing_keys} missing in the '
                                'transform output')
 
+    @staticmethod
+    def collect_input(results: dict,
+                      input_key_mapping: dict[str, Any]) -> dict[str, Any]:
+
+        def _collect(results, input_key_mapping):
+            if isinstance(input_key_mapping, dict):
+                return {
+                    k: _collect(results, v)
+                    for k, v in input_key_mapping.items()
+                }
+            if isinstance(input_key_mapping, (tuple, list)):
+                return input_key_mapping.__class__(
+                    (_collect(results, e) for e in input_key_mapping))
+            try:
+                return results[input_key_mapping]
+            except Exception as e:
+                raise type(
+                    e
+                )(f'Fail to apply input_key_mapping: {input_key_mapping}: {e}')
+
+        return _collect(results, input_key_mapping)
+
     def __call__(self, results: dict):
         for key_mapping in self._key_mappings:
-            kwargs = {
-                inner_key: results[outer_key]
-                for inner_key, outer_key in key_mapping['input'].items()
-            }
+
+            kwargs = Transform.collect_input(results, key_mapping['input'])
 
             output = self.transform(**kwargs)
 
