@@ -67,23 +67,40 @@ class Transform(metaclass=ABCMeta):
 
     def collect_input(self, data: dict,
                       input_mapping: dict[str, Any]) -> dict[str, Any]:
+        """Collect input of `transform` function from the data according to the
+        input mapping."""
 
-        def _collect(data, input_mapping):
-            if isinstance(input_mapping, dict):
-                return {k: _collect(data, v) for k, v in input_mapping.items()}
-            if isinstance(input_mapping, (tuple, list)):
-                return input_mapping.__class__(
-                    (_collect(data, e) for e in input_mapping))
+        def _collect(data, m):
+            if isinstance(m, dict):
+                # m is a dict {inner_key:outer_key, ...}
+                return {
+                    k_in: _collect(data, k_out)
+                    for k_in, k_out in m.items()
+                }
+            if isinstance(m, (tuple, list)):
+                # m is a list [outer_key1, outer_key2, ...]
+                return m.__class__((_collect(data, e) for e in m))
+
+            # m is an outer_key
             try:
-                return data[input_mapping]
+                return data[m]
             except Exception as e:
-                raise type(e)(
-                    f'Fail to apply input_mapping: {input_mapping}: {e}')
+                raise type(e)(f'Fail to collect {m} from data: {e}')
+
+        # if non-strict, skip the items missing in data and use default
+        # argument value of `transform`.
+        if not self.strict_key_mapping:
+            input_mapping = {
+                k: v
+                for k, v in input_mapping.items() if v in data
+            }
 
         return _collect(data, input_mapping)
 
     def collect_output(self, output: dict,
                        output_mapping: dict[str, Any]) -> dict[str, Any]:
+        """Collect items from the `transform` output to update to the data
+        flow."""
         ...
 
     def __call__(self, results: dict):
