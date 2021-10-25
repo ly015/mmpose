@@ -94,7 +94,7 @@ class Transform(metaclass=ABCMeta):
                 }
             if isinstance(m, (tuple, list)):
                 # m is a list [outer_key1, outer_key2, ...]
-                return m.__class__((_collect(data, e) for e in m))
+                return m.__class__(_collect(data, e) for e in m)
 
             # m is an outer_key
             try:
@@ -116,7 +116,22 @@ class Transform(metaclass=ABCMeta):
                        output_mapping: dict) -> dict[str, Any]:
         """Collect items from the `transform` output to update to the data
         flow."""
-        ...
+
+        def _collect(output, m):
+            if isinstance(m, dict):
+                assert isinstance(output, dict)
+                results = {}
+                for k_in, k_out in m.items():
+                    assert k_in in output
+                    results.update(_collect(output[k_in], k_out))
+                return results
+            if isinstance(m, (list, tuple)):
+                assert isinstance(output, (list, tuple))
+                assert len(output) == len(m)
+                return dict(zip(m, output))
+            return dict(m=output)
+
+        return _collect(output, output_mapping)
 
     def __call__(self, results: dict):
 
@@ -144,13 +159,13 @@ class RepeatableTransform(Transform):
                  broadcast=True):
         super().__init__(input_mapping, output_mapping, inplace, strict)
         self.broadcast = broadcast
-        self._num_repeat = self._get_repeat_num()
+        self._num_repeat = self.get_repeat_num()
 
     @property
     def broadcast(self):
         return self._broadcast
 
-    def _get_repeat_num(self) -> int:
+    def get_repeat_num(self) -> int:
         num_repeat = -1
         for k, v in self._input_mapping.items():
             if isinstance(v, (list, tuple)):
@@ -185,13 +200,16 @@ class RepeatableTransform(Transform):
 
         return num_repeat
 
+    def split_key_mapping(self, key_mapping):
+        return {}
+
     def __call__(self, results: dict):
 
         if self._num_repeat == -1:
             return super().__call__(results)
         else:
-            sub_input_mappings = self._slice_key_mapping(self._input_mapping)
-            sub_output_mappings = self._slice_key_mapping(self._output_mapping)
+            sub_input_mappings = self.split_key_mapping(self._input_mapping)
+            sub_output_mappings = self.split_key_mapping(self._output_mapping)
 
             output = {}
             for _input_mapping, _output_mapping in zip(sub_input_mappings,
