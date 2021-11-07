@@ -63,7 +63,7 @@ class Transform(metaclass=ABCMeta):
     def get_default_output_mapping(self):
         if self.inplace:
             # inplace mode: output mapping is the same as input mapping
-            return self.get_default_input_mapping()
+            return self._input_mapping()
         # no output mapping
         return None
 
@@ -135,8 +135,8 @@ class Transform(metaclass=ABCMeta):
 
     def __call__(self, results: dict):
 
-        kwargs = self.collect_input(results, self._input_mapping)
-        output = self.transform(**kwargs)
+        input = self.collect_input(results, self._input_mapping)
+        output = self.transform(**input)
 
         if self._output_mapping:
             output = self.collect_output(output, self._output_mapping)
