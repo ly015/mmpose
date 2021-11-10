@@ -162,7 +162,7 @@ class Remap():
 
 
 @PIPELINES2.register_module()
-class ApplyToSequence(Remap):
+class ApplyToMultiple(Remap):
 
     def __init__(self,
                  transforms: list[Union[dict, Callable[[dict], dict]]],
