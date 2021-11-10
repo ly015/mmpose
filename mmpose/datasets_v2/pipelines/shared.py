@@ -5,7 +5,7 @@ from contextlib import nullcontext
 from typing import Any, Callable, Optional, Union
 
 from ..builder import PIPELINES2
-from .utils import share_random_parameter
+from .utils import cache_random_parameters
 
 
 @PIPELINES2.register_module()
@@ -120,7 +120,7 @@ class Remap():
 
         collected = _remap(data, input_mapping)
 
-        # retain unmapped items
+        # Retain unmapped items
         inputs = data.copy()
         inputs.update(collected)
 
@@ -144,6 +144,9 @@ class Remap():
                 return dict(zip(m, data))
             return dict(m=data)
 
+        # Note that unmapped items are not retained, which is different from
+        # the behavior in remap_input. This is to avoid original data items
+        # being overwritten by intermediate namesakes
         return _remap(data, output_mapping)
 
     def __call__(self, results: dict) -> dict:
@@ -215,7 +218,7 @@ class ApplyToSequence(Remap):
 
         # Control random parameter sharing with a contextmanager
         if self.share_random_param:
-            cm = share_random_parameter
+            cm = cache_random_parameters
         else:
             cm = nullcontext
 
