@@ -223,7 +223,7 @@ class ApplyToMultiple(Remap):
             cm = nullcontext
 
         with cm(self.transforms):
-            outputs = [self.transforms(**_input) for _input in inputs]
+            outputs = [self.transforms(_input) for _input in inputs]
 
         # Collate output scatters (list of dict to dict of list)
         outputs = {
