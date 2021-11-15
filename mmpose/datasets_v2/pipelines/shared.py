@@ -4,12 +4,16 @@ from collections.abc import Sequence
 from contextlib import nullcontext
 from typing import Any, Callable, Optional, Union
 
+import mmcv
+import numpy as np
+
+from mmpose.datasets_v2.pipelines.base import BaseTransform
 from ..builder import PIPELINES2
-from .utils import cache_random_parameters
+from .utils import cache_random_params
 
 
 @PIPELINES2.register_module()
-class Compose:
+class Compose(BaseTransform):
     """Compose a data pipeline with a sequence of transforms.
 
     Args:
@@ -17,7 +21,7 @@ class Compose:
           dicts of transforms or transform objects.
     """
 
-    def __init__(self, transforms):
+    def __init__(self, transforms: list[Union[dict, Callable[[dict], dict]]]):
         assert isinstance(transforms, Sequence)
         self.transforms = []
         for transform in transforms:
@@ -34,20 +38,20 @@ class Compose:
         """Allow easy iteration over the transform sequence."""
         return iter(self.transforms)
 
-    def __call__(self, data):
+    def transform(self, results):
         """Call function to apply transforms sequentially.
 
         Args:
-            data (dict): A result dict contains the data to transform.
+            results (dict): A result dict contains the results to transform.
 
         Returns:
-            dict: Transformed data.
+            dict: Transformed results.
         """
         for t in self.transforms:
-            data = t(data)
-            if data is None:
+            results = t(results)
+            if results is None:
                 return None
-        return data
+        return results
 
     def __repr__(self):
         """Compute the string representation."""
@@ -59,7 +63,7 @@ class Compose:
 
 
 @PIPELINES2.register_module()
-class Remap():
+class Remap(BaseTransform):
     """A transform wrapper to remap and reorganize the input/output of the
     wrapped transforms (or sub-pipeline).
 
@@ -149,7 +153,7 @@ class Remap():
         # being overwritten by intermediate namesakes
         return _remap(data, output_mapping)
 
-    def __call__(self, results: dict) -> dict:
+    def transform(self, results: dict) -> dict:
 
         inputs = self.remap_input(results, self.input_mapping)
         outputs = self.transforms(inputs)
@@ -169,14 +173,14 @@ class ApplyToMultiple(Remap):
                  input_mapping: Optional[dict] = None,
                  output_mapping: Optional[dict] = None,
                  inplace: bool = False,
-                 share_random_param: bool = False):
+                 share_random_params: bool = False):
         super().__init__(
             transforms,
             input_mapping=input_mapping,
             output_mapping=output_mapping,
             inplace=inplace)
 
-        self.share_random_param = share_random_param
+        self.share_random_params = share_random_params
 
     def scatter_sequence(self, data: dict) -> list[dict]:
         # infer split number from input
@@ -209,7 +213,7 @@ class ApplyToMultiple(Remap):
             scatters.append(scatter)
         return scatters
 
-    def __call__(self, results: dict):
+    def transform(self, results: dict):
         # Apply input remapping
         inputs = self.remap_input(results, self._input_mapping)
 
@@ -217,8 +221,8 @@ class ApplyToMultiple(Remap):
         inputs = self.scatter_sequence(inputs)
 
         # Control random parameter sharing with a contextmanager
-        if self.share_random_param:
-            cm = cache_random_parameters
+        if self.share_random_params:
+            cm = cache_random_params
         else:
             cm = nullcontext
 
@@ -237,3 +241,35 @@ class ApplyToMultiple(Remap):
 
         results.update(outputs)
         return results
+
+
+@PIPELINES2.register_module()
+class ChooseOne(BaseTransform):
+    """Process data with a randomly chosen pipeline from given candidates.
+
+    Args:
+        pipelines (list[list]): A list of pipeline candidates, each is a
+            sequence of transforms.
+        pipeline_probs (list[float], optional): The probabilities associated
+            with each pipeline. The length should be equal to the pipeline
+            number and the sum should be 1. If not given, a uniform
+            distribution will be assumed.
+    """
+
+    def __init__(self,
+                 pipelines: list[list[Union[dict, Callable[[dict], dict]]]],
+                 pipeline_probs: Optional[list[float]] = None):
+
+        if pipeline_probs is not None:
+            assert mmcv.is_seq_of(pipeline_probs, float)
+            assert len(pipelines) == len(pipeline_probs), \
+                '`pipelines` and `pipeline_probs` must have same lengths. ' \
+                f'Got {len(pipelines)} vs {len(pipeline_probs)}.'
+            assert sum(pipeline_probs) == 1
+
+        self.pipeline_probs = pipeline_probs
+        self.pipelines = [Compose(transforms) for transforms in pipelines]
+
+    def transform(self, results):
+        pipeline = np.random.choice(self.pipelines, p=self.pipeline_probs)
+        return pipeline(results)

@@ -1,6 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from abc import ABCMeta, abstractmethod
-from typing import Any
 
 
 class BaseTransform(metaclass=ABCMeta):
@@ -9,9 +8,6 @@ class BaseTransform(metaclass=ABCMeta):
 
         return self.transform(results)
 
-    def get_random_parameter(self, results) -> Any:
-        pass
-
     @abstractmethod
-    def transform(self, results):
+    def transform(self, results: dict) -> dict:
         pass
