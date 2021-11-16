@@ -72,7 +72,7 @@ def cache_random_params(transforms: Union[BaseTransform, Iterable]):
     def _apply(t: Union[BaseTransform, Iterable],
                func: Callable[[BaseTransform], None]):
         if isinstance(t, BaseTransform):
-            if hasattr(t, '_random_param_generators'):
+            if hasattr(t, '_cacheable_methods'):
                 func(t)
         else:
             for _t in t:

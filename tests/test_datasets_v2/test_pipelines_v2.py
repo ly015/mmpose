@@ -1,69 +1,170 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import warnings
+
 import numpy as np
-from mmcv.utils import config  # noqa F401
+import pytest
 
-from mmpose.datasets_v2 import PIPELINES2  # noqa F401
 from mmpose.datasets_v2.pipelines.base import BaseTransform
-from mmpose.datasets_v2.pipelines.utils import (AllowCache, allow_cache,
-                                                cache_random_parameters,
-                                                share_random_parameters)
+from mmpose.datasets_v2.pipelines.shared import ApplyToMultiple, Remap
+from mmpose.datasets_v2.pipelines.utils import (cache_random_params,
+                                                cacheable_method)
 
 
-def test_share_random_parameter():
+class AddToValue(BaseTransform):
+    """Dummy transform to test transform wrappers."""
 
-    class DummyTransform(BaseTransform):
+    def __init__(self, constant_addend=0, use_random_addend=False) -> None:
+        super().__init__()
+        self.constant_addend = constant_addend
+        self.use_random_addend = use_random_addend
 
-        def get_random_parameter(self):
-            return np.random.rand()
+    @cacheable_method
+    def get_random_addend(self):
+        return np.random.rand()
 
-        def transform(self, results):
-            results['random_param'] = self.get_random_parameter()
-            return results
+    def transform(self, results: dict) -> dict:
+        augend = results['value']
 
-    transform = DummyTransform()
+        if isinstance(augend, list):
+            warnings.warn('value is a list', UserWarning)
+        if isinstance(augend, dict):
+            warnings.warn('value is a dict', UserWarning)
 
-    with share_random_parameters(transform):
-        results_1 = transform({})
-        results_2 = transform({})
-        np.testing.assert_equal(results_1['random_param'],
-                                results_2['random_param'])
+        def _add_to_value(augend, addend):
+            if isinstance(augend, list):
+                return [_add_to_value(v, addend) for v in augend]
+            if isinstance(augend, dict):
+                return {k: _add_to_value(v, addend) for k, v in augend.items()}
+            return augend + addend
 
-    results_1 = transform({})
-    results_2 = transform({})
-    with np.testing.assert_raises(AssertionError):
-        np.testing.assert_equal(results_1['random_param'],
-                                results_2['random_param'])
+        if self.use_random_addend:
+            addend = self.get_random_addend()
+        else:
+            addend = self.constant_addend
+
+        results['value'] = _add_to_value(results['value'], addend)
+        return results
 
 
 def test_cache_random_parameters():
 
-    class DummyTransform(BaseTransform):
+    transform = AddToValue(use_random_addend=True)
 
-        @AllowCache
-        def get_random_a(self):
-            return np.random.rand()
+    assert hasattr(AddToValue, '_cacheable_methods')
+    assert 'get_random_addend' in AddToValue._cacheable_methods
 
-        @allow_cache
-        def get_random_b(self):
-            return np.random.rand()
+    with cache_random_params(transform):
+        results_1 = transform(dict(value=0))
+        results_2 = transform(dict(value=0))
+        np.testing.assert_equal(results_1['value'], results_2['value'])
 
-        def transform(self, results):
-            results['random_param'] = self.get_random_a() + self.get_random_b()
-            return results
-
-    transform = DummyTransform()
-
-    assert hasattr(DummyTransform, '_cacheable_methods')
-    assert 'get_random_a' in DummyTransform._cacheable_methods
-
-    with cache_random_parameters(transform):
-        results_1 = transform({})
-        results_2 = transform({})
-        np.testing.assert_equal(results_1['random_param'],
-                                results_2['random_param'])
-
-    results_1 = transform({})
-    results_2 = transform({})
+    results_1 = transform(dict(value=0))
+    results_2 = transform(dict(value=0))
     with np.testing.assert_raises(AssertionError):
-        np.testing.assert_equal(results_1['random_param'],
-                                results_2['random_param'])
+        np.testing.assert_equal(results_1['value'], results_2['value'])
+
+
+def test_remap():
+
+    # Case 1: simple remap
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=1)],
+        input_mapping=dict(value='v_in'),
+        output_mapping=dict(value='v_out'))
+
+    results = dict(value=0, v_in=1)
+    results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)  # should be unchanged
+    np.testing.assert_equal(results['v_in'], 1)
+    np.testing.assert_equal(results['v_out'], 2)
+
+    # Case 2: collecting list
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=2)],
+        input_mapping=dict(value=['v_in_1', 'v_in_2']),
+        output_mapping=dict(value=['v_out_1', 'v_out_2']))
+    results = dict(value=0, v_in_1=1, v_in_2=2)
+
+    with pytest.warns(UserWarning, match='value is a list'):
+        results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)  # should be unchanged
+    np.testing.assert_equal(results['v_in_1'], 1)
+    np.testing.assert_equal(results['v_in_2'], 2)
+    np.testing.assert_equal(results['v_out_1'], 3)
+    np.testing.assert_equal(results['v_out_2'], 4)
+
+    # Case 3: collecting dict
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=2)],
+        input_mapping=dict(value=dict(v1='v_in_1', v2='v_in_2')),
+        output_mapping=dict(value=dict(v1='v_out_1', v2='v_out_2')))
+    results = dict(value=0, v_in_1=1, v_in_2=2)
+
+    with pytest.warns(UserWarning, match='value is a dict'):
+        results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)  # should be unchanged
+    np.testing.assert_equal(results['v_in_1'], 1)
+    np.testing.assert_equal(results['v_in_2'], 2)
+    np.testing.assert_equal(results['v_out_1'], 3)
+    np.testing.assert_equal(results['v_out_2'], 4)
+
+    # Case 4: collecting list with inplace mode
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=2)],
+        input_mapping=dict(value=['v_in_1', 'v_in_2']),
+        inplace=True)
+    results = dict(value=0, v_in_1=1, v_in_2=2)
+
+    with pytest.warns(UserWarning, match='value is a list'):
+        results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)
+    np.testing.assert_equal(results['v_in_1'], 3)
+    np.testing.assert_equal(results['v_in_2'], 4)
+
+    # Case 5: collecting dict with inplace mode
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=2)],
+        input_mapping=dict(value=dict(v1='v_in_1', v2='v_in_2')),
+        inplace=True)
+    results = dict(value=0, v_in_1=1, v_in_2=2)
+
+    with pytest.warns(UserWarning, match='value is a dict'):
+        results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)
+    np.testing.assert_equal(results['v_in_1'], 3)
+    np.testing.assert_equal(results['v_in_2'], 4)
+
+    # Case 6: nested collection with inplace mode
+    pipeline = Remap(
+        transforms=[AddToValue(constant_addend=2)],
+        input_mapping=dict(value=['v1', dict(v2=['v21', 'v22'], v3='v3')]),
+        inplace=True)
+    results = dict(value=0, v1=1, v21=2, v22=3, v3=4)
+
+    with pytest.warns(UserWarning, match='value is a list'):
+        results = pipeline(results)
+
+    np.testing.assert_equal(results['value'], 0)
+    np.testing.assert_equal(results['v1'], 3)
+    np.testing.assert_equal(results['v21'], 4)
+    np.testing.assert_equal(results['v22'], 5)
+    np.testing.assert_equal(results['v3'], 6)
+
+
+def test_apply_to_multiple():
+
+    # Case 1: apply to list in results
+    pipeline = ApplyToMultiple(
+        transforms=[AddToValue(constant_addend=1)],
+        input_mapping=dict(value='values'),
+        inplace=True)
+    results = dict(values=[1, 2])
+
+    results = pipeline(results)
+
+    np.testing.assert_equal(results['values'], [2, 3])

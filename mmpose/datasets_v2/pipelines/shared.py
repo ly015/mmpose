@@ -11,6 +11,9 @@ from mmpose.datasets_v2.pipelines.base import BaseTransform
 from ..builder import PIPELINES2
 from .utils import cache_random_params
 
+# Indicator for required but missing keys in results
+NotInResults = object()
+
 
 @PIPELINES2.register_module()
 class Compose(BaseTransform):
@@ -84,15 +87,21 @@ class Remap(BaseTransform):
                  transforms: list[Union[dict, Callable[[dict], dict]]],
                  input_mapping: Optional[dict] = None,
                  output_mapping: Optional[dict] = None,
-                 inplace=False):
+                 inplace: bool = False,
+                 strict: bool = True):
 
         self.inplace = inplace
+        self.strict = strict
         self.input_mapping = input_mapping
 
         if inplace:
+            if not self.strict:
+                raise ValueError('Remap: `strict` must be set True if'
+                                 '`inplace` is set True.')
+
             if output_mapping is not None:
-                raise RuntimeError('Remap: the output_mapping must be None '
-                                   'if `inplace` is set True')
+                raise ValueError('Remap: the output_mapping must be None '
+                                 'if `inplace` is set True.')
             self.output_mapping = input_mapping
         else:
             self.output_mapping = output_mapping
@@ -117,10 +126,10 @@ class Remap(BaseTransform):
                 return m.__class__(_remap(data, e) for e in m)
 
             # m is an outer_key
-            try:
-                return data[m]
-            except Exception as e:
-                raise type(e)(f'Fail to collect {m} from data: {e}')
+            if self.strict:
+                return data.get(m)
+            else:
+                return data.get(m, NotInResults)
 
         collected = _remap(data, input_mapping)
 
@@ -145,8 +154,18 @@ class Remap(BaseTransform):
             if isinstance(m, (list, tuple)):
                 assert isinstance(data, (list, tuple))
                 assert len(data) == len(m)
-                return dict(zip(m, data))
-            return dict(m=data)
+                results = {}
+                for m_i, d_i in zip(m, data):
+                    results.update(_remap(d_i, m_i))
+                return results
+
+            if data == NotInResults:
+                raise ValueError(
+                    f'Attempt to assign `NotInResults` to output key {m}.'
+                    '`NotInResults` just serves as a placeholder for missing '
+                    'keys in non-strict input mapping. It should not be '
+                    'assigned to any output.')
+            return {m: data}
 
         # Note that unmapped items are not retained, which is different from
         # the behavior in remap_input. This is to avoid original data items
@@ -173,12 +192,10 @@ class ApplyToMultiple(Remap):
                  input_mapping: Optional[dict] = None,
                  output_mapping: Optional[dict] = None,
                  inplace: bool = False,
+                 strict: bool = True,
                  share_random_params: bool = False):
-        super().__init__(
-            transforms,
-            input_mapping=input_mapping,
-            output_mapping=output_mapping,
-            inplace=inplace)
+        super().__init__(transforms, input_mapping, output_mapping, inplace,
+                         strict)
 
         self.share_random_params = share_random_params
 
@@ -186,9 +203,7 @@ class ApplyToMultiple(Remap):
         # infer split number from input
         seq_len = 0
         key_rep = None
-        for key in self._input_mapping.keys():
-            if not self.strict and key not in data:
-                continue
+        for key in self.input_mapping.keys():
 
             assert isinstance(data[key], Sequence)
             if seq_len:
@@ -208,14 +223,14 @@ class ApplyToMultiple(Remap):
         scatters = []
         for i in range(seq_len):
             scatter = data.copy()
-            for key in self._input_mapping.keys():
+            for key in self.input_mapping.keys():
                 scatter[key] = data[key][i]
             scatters.append(scatter)
         return scatters
 
     def transform(self, results: dict):
         # Apply input remapping
-        inputs = self.remap_input(results, self._input_mapping)
+        inputs = self.remap_input(results, self.input_mapping)
 
         # Scatter sequential inputs into a list
         inputs = self.scatter_sequence(inputs)
@@ -236,8 +251,8 @@ class ApplyToMultiple(Remap):
         }
 
         # Apply output remapping
-        if self._output_mapping:
-            outputs = self.remap_output(outputs, self._output_mapping)
+        if self.output_mapping:
+            outputs = self.remap_output(outputs, self.output_mapping)
 
         results.update(outputs)
         return results
