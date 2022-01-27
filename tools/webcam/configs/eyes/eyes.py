@@ -69,7 +69,7 @@ runner = dict(
         # Pose results is needed.
         dict(
             type='SunglassesNode',
-            name='Visualizer',
+            name='Sunglasses',
             enable_key='s',
             enable=True,
             frame_buffer='frame',
@@ -79,7 +79,7 @@ runner = dict(
         # Pose results is needed.
         dict(
             type='BugEyeNode',
-            name='Visualizer',
+            name='BugEye',
             enable_key='b',
             enable=False,
             frame_buffer='vis_sunglasses',
