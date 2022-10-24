@@ -64,4 +64,12 @@ class LoadImage(LoadImageFromFile):
             results['img_shape'] = img.shape[:2]
             results['ori_shape'] = img.shape[:2]
 
+        img = results['img']
+        assert img.ndim == 2 or img.ndim == 3
+        if img.ndim == 2:
+            img = np.repeat(img[..., None], 3, axis=-1)
+        elif img.shape[2] == 1:
+            img = np.repeat(img, 3, axis=-1)
+        results['img'] = img
+
         return results
