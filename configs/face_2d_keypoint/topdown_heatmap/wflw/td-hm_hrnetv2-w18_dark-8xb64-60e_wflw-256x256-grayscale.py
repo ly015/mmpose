@@ -112,7 +112,7 @@ file_client_args = dict(
 
 # pipelines
 train_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args),
+    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='RandomFlip', direction='horizontal'),
     dict(
@@ -125,7 +125,7 @@ train_pipeline = [
     dict(type='PackPoseInputs')
 ]
 val_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args),
+    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='TopdownAffine', input_size=codec['input_size']),
     dict(type='PackPoseInputs')

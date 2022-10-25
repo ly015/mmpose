@@ -47,7 +47,7 @@ class BaseHead(BaseModule, metaclass=ABCMeta):
         if isinstance(feat_channels, int):
             feat_channels = [feat_channels]
 
-        if self.input_transform == 'resize_concat':
+        if self.input_transform in {'resize_concat', 'concat'}:
             if isinstance(self.input_index, int):
                 in_channels = feat_channels[self.input_index]
             else:
@@ -76,6 +76,8 @@ class BaseHead(BaseModule, metaclass=ABCMeta):
                     align_corners=self.align_corners) for x in inputs
             ]
             inputs = torch.cat(resized_inputs, dim=1)
+        elif self.input_transform == 'concat':
+            inputs = torch.cat([feats[i] for i in self.input_index], dim=1)
         elif self.input_transform == 'select':
             if isinstance(self.input_index, int):
                 inputs = feats[self.input_index]
