@@ -1,12 +1,12 @@
 _base_ = ['../../../_base_/default_runtime.py']
 
 # runtime
-train_cfg = dict(max_epochs=210, val_interval=1)
+train_cfg = dict(max_epochs=60, val_interval=1)
 
 # optimizer
 optim_wrapper = dict(optimizer=dict(
     type='Adam',
-    lr=5e-4,
+    lr=2e-3,
 ))
 
 # learning policy
@@ -17,8 +17,8 @@ param_scheduler = [
     dict(
         type='MultiStepLR',
         begin=0,
-        end=210,
-        milestones=[170, 200],
+        end=60,
+        milestones=[40, 55],
         gamma=0.1,
         by_epoch=True)
 ]
@@ -26,8 +26,17 @@ param_scheduler = [
 # automatically scaling LR based on the actual training batch size
 auto_scale_lr = dict(base_batch_size=512)
 
+# hooks
+default_hooks = dict(
+    checkpoint=dict(save_best='nme/@[60, 72]', rule='greater'))
+
 # codec settings
-codec = dict(type='RegressionLabel', input_size=(256, 256))
+codec = dict(
+    type='MSRAHeatmap',
+    input_size=(256, 256),
+    heatmap_size=(64, 64),
+    sigma=2,
+    unbiased=True)
 
 # model settings
 model = dict(
@@ -38,20 +47,20 @@ model = dict(
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True),
     backbone=dict(
-        type='ResNet',
-        depth=50,
-        init_cfg=dict(type='Pretrained', checkpoint='work_dirs/pretrained/resnet50-0676ba61.pth'),
-    ),
-    neck=dict(type='GlobalAveragePooling'),
+        type='MobileNetV2',
+        widen_factor=1.,
+        out_indices=(7, ),
+        init_cfg=dict(type='Pretrained', checkpoint='mmcls://mobilenet_v2')),
     head=dict(
-        type='RLEHead',
-        in_channels=2048,
-        num_joints=98,
-        loss=dict(type='RLELoss', use_target_weight=True),
+        type='HeatmapHead',
+        in_channels=1280,
+        out_channels=98,
+        loss=dict(type='KeypointMSELoss', use_target_weight=True),
         decoder=codec),
     test_cfg=dict(
         flip_test=True,
-        shift_coords=True,
+        flip_mode='heatmap',
+        shift_heatmap=True,
     ))
 
 # base dataset settings
@@ -70,12 +79,16 @@ file_client_args = dict(
 
 # pipelines
 train_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args),
+    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='RandomFlip', direction='horizontal'),
-    dict(type='RandomBBoxTransform', shift_prob=0),
+    dict(
+        type='RandomBBoxTransform',
+        shift_prob=0,
+        rotate_factor=60,
+        scale_factor=(0.75, 1.25)),
     dict(type='TopdownAffine', input_size=codec['input_size']),
-    dict(type='GenerateTarget', target_type='keypoint_label', encoder=codec),
+    dict(type='GenerateTarget', target_type='heatmap', encoder=codec),
     dict(type='PackPoseInputs')
 ]
 val_pipeline = [
@@ -87,7 +100,7 @@ val_pipeline = [
 
 # data loaders
 train_dataloader = dict(
-    batch_size=64,
+    batch_size=128,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -115,10 +128,6 @@ val_dataloader = dict(
         pipeline=val_pipeline,
     ))
 test_dataloader = val_dataloader
-
-# hooks
-default_hooks = dict(
-    checkpoint=dict(save_best='nme/@[60, 72]', rule='greater'))
 
 # evaluators
 val_evaluator = dict(

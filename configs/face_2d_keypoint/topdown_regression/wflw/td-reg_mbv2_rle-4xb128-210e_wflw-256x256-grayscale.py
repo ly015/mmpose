@@ -38,14 +38,14 @@ model = dict(
         std=[58.395, 57.12, 57.375],
         bgr_to_rgb=True),
     backbone=dict(
-        type='ResNet',
-        depth=50,
-        init_cfg=dict(type='Pretrained', checkpoint='work_dirs/pretrained/resnet50-0676ba61.pth'),
-    ),
+        type='MobileNetV2',
+        widen_factor=1.,
+        out_indices=(7, ),
+        init_cfg=dict(type='Pretrained', checkpoint='mmcls://mobilenet_v2')),
     neck=dict(type='GlobalAveragePooling'),
     head=dict(
         type='RLEHead',
-        in_channels=2048,
+        in_channels=1280,
         num_joints=98,
         loss=dict(type='RLELoss', use_target_weight=True),
         decoder=codec),
@@ -70,7 +70,7 @@ file_client_args = dict(
 
 # pipelines
 train_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args),
+    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='RandomFlip', direction='horizontal'),
     dict(type='RandomBBoxTransform', shift_prob=0),
@@ -87,7 +87,7 @@ val_pipeline = [
 
 # data loaders
 train_dataloader = dict(
-    batch_size=64,
+    batch_size=128,
     num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
