@@ -133,8 +133,8 @@ def main():
     if args.output_root:
         mmengine.mkdir_or_exist(args.output_root)
 
-    register_mmyolo_modules()
     # build detector
+    register_mmyolo_modules()
     detector = init_detector(
         args.det_config, args.det_checkpoint, device=args.device)
 
