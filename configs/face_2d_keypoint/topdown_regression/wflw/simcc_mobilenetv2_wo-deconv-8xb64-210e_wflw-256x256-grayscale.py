@@ -58,14 +58,7 @@ model = dict(
         decoder=codec),
     test_cfg=dict(flip_test=True, ))
 
-# file_client_args = dict(backend='disk')
-file_client_args = dict(
-    backend='petrel',
-    path_mapping=dict({
-        '.data/wflw/': 'openmmlab:s3://openmmlab/datasets/pose/WFLW/',
-        'data/wflw/': 'openmmlab:s3://openmmlab/datasets/pose/WFLW/'
-    })
-)
+file_client_args = dict(backend='disk')
 
 # base dataset settings
 dataset_type = 'WFLWDataset'
@@ -74,16 +67,23 @@ data_root = 'data/wflw/'
 
 # pipelines
 train_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
+    dict(
+        type='LoadImage',
+        file_client_args=file_client_args,
+        color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='RandomFlip', direction='horizontal'),
     dict(type='RandomBBoxTransform', shift_prob=0),
     dict(type='TopdownAffine', input_size=codec['input_size']),
-    dict(type='GenerateTarget', target_type='keypoint_xy_label', encoder=codec),
+    dict(
+        type='GenerateTarget', target_type='keypoint_xy_label', encoder=codec),
     dict(type='PackPoseInputs')
 ]
 val_pipeline = [
-    dict(type='LoadImage', file_client_args=file_client_args, color_type='grayscale'),
+    dict(
+        type='LoadImage',
+        file_client_args=file_client_args,
+        color_type='grayscale'),
     dict(type='GetBBoxCenterScale'),
     dict(type='TopdownAffine', input_size=codec['input_size']),
     dict(type='PackPoseInputs')
@@ -130,4 +130,3 @@ val_evaluator = dict(
     norm_mode='keypoint_distance',
 )
 test_evaluator = val_evaluator
-
