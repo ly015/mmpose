@@ -6,7 +6,7 @@ from .hourglass_ae import HourglassAENet
 from .hrformer import HRFormer
 from .hrnet import HRNet
 from .litehrnet import LiteHRNet
-from .mobilenet_v2 import MobileNetV2
+from .mobilenet_v2 import MobileNetV2, MobileNetV21
 from .mobilenet_v3 import MobileNetV3
 from .mspn import MSPN
 from .pvt import PyramidVisionTransformer, PyramidVisionTransformerV2
@@ -33,5 +33,5 @@ __all__ = [
     'SEResNet', 'SEResNeXt', 'ShuffleNetV1', 'ShuffleNetV2', 'CPM', 'RSN',
     'MSPN', 'ResNeSt', 'VGG', 'TCN', 'ViPNAS_ResNet', 'ViPNAS_MobileNetV3',
     'LiteHRNet', 'V2VNet', 'HRFormer', 'PyramidVisionTransformer',
-    'PyramidVisionTransformerV2', 'SwinTransformer'
+    'PyramidVisionTransformerV2', 'SwinTransformer', 'MobileNetV21'
 ]
